@@ -1,0 +1,50 @@
+{
+    "name": "maestrodimateo/scramble-search",
+    "description": "Adds a keyboard-driven route search palette (Ctrl+K) to Scramble API docs",
+    "keywords": ["laravel", "scramble", "api", "documentation", "search", "openapi"],
+    "homepage": "https://github.com/maestrodimateo/scramble-search",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Maestro Di Mateo",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "dedoc/scramble": "*"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0",
+        "pestphp/pest": "^2.0|^3.0",
+        "pestphp/pest-plugin-laravel": "^2.0|^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Maestrodimateo\\ScrambleSearch\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Maestrodimateo\\ScrambleSearch\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Maestrodimateo\\ScrambleSearch\\ScrambleSearchServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
