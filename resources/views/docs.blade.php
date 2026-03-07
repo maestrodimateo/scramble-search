@@ -295,6 +295,10 @@
             });
         }
     }
+    routes.sort((a, b) => {
+        const tagCmp = a.tag.localeCompare(b.tag);
+        return tagCmp !== 0 ? tagCmp : a.path.localeCompare(b.path);
+    });
 
     const overlay  = document.getElementById('api-search-overlay');
     const input    = document.getElementById('api-search-input');
