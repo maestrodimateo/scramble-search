@@ -40,6 +40,14 @@ The service provider is auto-discovered by Laravel. No further configuration nee
 
 ---
 
+## Preview
+
+![Search palette closed — floating trigger button visible](art/capture-1.png)
+
+![Search palette open — filtering routes in real time](art/capture-2.png)
+
+---
+
 ## Usage
 
 Open your Scramble documentation (default: `/docs/api`) and:
