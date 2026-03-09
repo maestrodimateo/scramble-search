@@ -323,14 +323,58 @@
         close();
     }
 
-    function highlight(text, query) {
-        if (!query) return escHtml(text);
-        const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-        return escHtml(text).replace(re, '<mark style="background:#fef08a;border-radius:2px;padding:0 1px">$1</mark>');
-    }
-
     function escHtml(s) {
         return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Subsequence fuzzy match: all chars of needle must appear in order in haystack
+    function fuzzyMatch(haystack, needle) {
+        let ni = 0;
+        for (let hi = 0; hi < haystack.length && ni < needle.length; hi++) {
+            if (haystack[hi] === needle[ni]) ni++;
+        }
+        return ni === needle.length;
+    }
+
+    // Score a single token against a text field
+    // 3 = exact word boundary match, 2 = substring match, 1 = fuzzy match, 0 = no match
+    function scoreToken(text, token) {
+        if (!text) return 0;
+        if (new RegExp('\\b' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(text)) return 3;
+        if (text.includes(token)) return 2;
+        if (token.length >= 2 && fuzzyMatch(text, token)) return 1;
+        return 0;
+    }
+
+    // Score a route against all tokens; returns -1 if any token is unmatched.
+    // Each matching field contributes to the score so routes matching in
+    // multiple fields rank higher than routes with a single field match.
+    function scoreRoute(route, tokens) {
+        const fields = [
+            route.path.toLowerCase(),
+            route.method.toLowerCase(),
+            route.summary.toLowerCase(),
+            route.tag.toLowerCase(),
+        ];
+        let total = 0;
+        for (const token of tokens) {
+            const fieldScores = fields.map(f => scoreToken(f, token));
+            const best = Math.max(...fieldScores);
+            if (best === 0) return -1;
+            total += fieldScores.reduce((sum, s) => sum + s, 0);
+        }
+        return total;
+    }
+
+    function highlight(text, query) {
+        if (!query.trim()) return escHtml(text);
+        let result = escHtml(text);
+        const tokens = query.trim().split(/\s+/).filter(Boolean);
+        tokens.forEach(token => {
+            const re = new RegExp('(' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            result = result.replace(re, '<mark style="background:#fef08a;border-radius:2px;padding:0 1px">$1</mark>');
+        });
+        return result;
     }
 
     function render(list) {
@@ -356,14 +400,14 @@
     }
 
     function filter(query) {
-        if (!query.trim()) { render(routes); return; }
-        const q = query.toLowerCase();
-        render(routes.filter(r =>
-            r.path.toLowerCase().includes(q)    ||
-            r.method.toLowerCase().includes(q)  ||
-            r.summary.toLowerCase().includes(q) ||
-            r.tag.toLowerCase().includes(q)
-        ));
+        const q = query.trim();
+        if (!q) { render(routes); return; }
+        const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+        const scored = routes
+            .map(r => ({ route: r, score: scoreRoute(r, tokens) }))
+            .filter(({ score }) => score > 0)
+            .sort((a, b) => b.score - a.score);
+        render(scored.map(({ route }) => route));
     }
 
     function setActive(idx) {
