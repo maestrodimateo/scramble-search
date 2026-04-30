@@ -54,8 +54,8 @@ it('embeds AND logic between tokens', function (): void {
 it('embeds token-level highlighting', function (): void {
     $html = $this->get('/docs/api')->getContent();
 
-    // Le highlight boucle sur les tokens individuels
-    expect($html)->toContain('tokens.forEach(token =>');
+    // Le highlight boucle sur les regexes pré-compilées
+    expect($html)->toContain('for (const re of highlightRegexes)');
 });
 
 it('embeds subsequence fuzzy logic', function (): void {

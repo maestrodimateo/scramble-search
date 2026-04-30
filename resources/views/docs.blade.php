@@ -268,31 +268,37 @@
     @if($config->get('ui.search', true) === false) hideSearch="true" @endif
 />
 <script>
+    const __spec = @json($spec);
     (async () => {
-        const docs = document.getElementById('docs');
-        docs.apiDescriptionDocument = @json($spec);
+        document.getElementById('docs').apiDescriptionDocument = __spec;
     })();
 </script>
 
 <script>
 (function () {
-    const spec   = @json($spec);
-    const paths  = spec.paths || {};
+    const paths  = __spec.paths || {};
     const HTTP_METHODS = ['get','post','put','patch','delete','head','options'];
 
-    // Build flat route list from spec
+    // Build flat route list from spec with pre-computed lowercase fields
     const routes = [];
     for (const [path, methods] of Object.entries(paths)) {
         for (const method of HTTP_METHODS) {
             if (!methods[method]) continue;
             const op = methods[method];
-            routes.push({
+            const route = {
                 method: method.toUpperCase(),
                 path,
                 summary:     op.summary || op.description || '',
                 operationId: op.operationId || '',
                 tag:         (op.tags || [])[0] || '',
-            });
+            };
+            route._lower = [
+                route.path.toLowerCase(),
+                route.method.toLowerCase(),
+                route.summary.toLowerCase(),
+                route.tag.toLowerCase(),
+            ];
+            routes.push(route);
         }
     }
     routes.sort((a, b) => {
@@ -305,6 +311,10 @@
     const results  = document.getElementById('api-search-results');
     const trigger  = document.getElementById('api-search-trigger');
     let activeIdx  = -1;
+
+    function escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
 
     function open() {
         overlay.classList.add('open');
@@ -338,27 +348,19 @@
 
     // Score a single token against a text field
     // 3 = exact word boundary match, 2 = substring match, 1 = fuzzy match, 0 = no match
-    function scoreToken(text, token) {
+    function scoreToken(text, token, tokenRegex) {
         if (!text) return 0;
-        if (new RegExp('\\b' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(text)) return 3;
+        if (tokenRegex.test(text)) { tokenRegex.lastIndex = 0; return 3; }
         if (text.includes(token)) return 2;
         if (token.length >= 2 && fuzzyMatch(text, token)) return 1;
         return 0;
     }
 
     // Score a route against all tokens; returns -1 if any token is unmatched.
-    // Each matching field contributes to the score so routes matching in
-    // multiple fields rank higher than routes with a single field match.
-    function scoreRoute(route, tokens) {
-        const fields = [
-            route.path.toLowerCase(),
-            route.method.toLowerCase(),
-            route.summary.toLowerCase(),
-            route.tag.toLowerCase(),
-        ];
+    function scoreRoute(route, preparedTokens) {
         let total = 0;
-        for (const token of tokens) {
-            const fieldScores = fields.map(f => scoreToken(f, token));
+        for (const { token, regex } of preparedTokens) {
+            const fieldScores = route._lower.map(f => scoreToken(f, token, regex));
             const best = Math.max(...fieldScores);
             if (best === 0) return -1;
             total += fieldScores.reduce((sum, s) => sum + s, 0);
@@ -366,48 +368,59 @@
         return total;
     }
 
-    function highlight(text, query) {
-        if (!query.trim()) return escHtml(text);
+    function highlight(text, highlightRegexes) {
         let result = escHtml(text);
-        const tokens = query.trim().split(/\s+/).filter(Boolean);
-        tokens.forEach(token => {
-            const re = new RegExp('(' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        for (const re of highlightRegexes) {
             result = result.replace(re, '<mark style="background:#fef08a;border-radius:2px;padding:0 1px">$1</mark>');
-        });
+        }
         return result;
     }
 
-    function render(list) {
+    function render(list, highlightRegexes) {
         activeIdx = -1;
         if (!list.length) {
             results.innerHTML = '<div id="api-search-empty">No route found</div>';
             return;
         }
+        const hl = highlightRegexes || [];
         results.innerHTML = list.map((r, i) => `
             <div class="api-route-item" role="option" data-idx="${i}" data-op="${escHtml(r.operationId)}">
                 <span class="api-method-badge badge-${r.method.toLowerCase()}">${r.method}</span>
                 <div class="api-route-info">
-                    <div class="api-route-path">${highlight(r.path, input.value.trim())}</div>
-                    ${r.summary ? `<div class="api-route-summary">${highlight(r.summary, input.value.trim())}</div>` : ''}
+                    <div class="api-route-path">${highlight(r.path, hl)}</div>
+                    ${r.summary ? `<div class="api-route-summary">${highlight(r.summary, hl)}</div>` : ''}
                 </div>
                 ${r.tag ? `<span class="api-route-tag">${escHtml(r.tag)}</span>` : ''}
             </div>
         `).join('');
-
-        results.querySelectorAll('.api-route-item').forEach(el => {
-            el.addEventListener('click', () => navigate(el.dataset.op));
-        });
     }
+
+    // Event delegation for route clicks
+    results.addEventListener('click', e => {
+        const item = e.target.closest('.api-route-item');
+        if (item) navigate(item.dataset.op);
+    });
+
+    let debounceTimer;
 
     function filter(query) {
         const q = query.trim();
         if (!q) { render(routes); return; }
+
         const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+        const preparedTokens = tokens.map(t => ({
+            token: t,
+            regex: new RegExp('\\b' + escapeRegex(t), 'i'),
+        }));
+        const highlightRegexes = tokens.map(t =>
+            new RegExp('(' + escapeRegex(t) + ')', 'gi')
+        );
+
         const scored = routes
-            .map(r => ({ route: r, score: scoreRoute(r, tokens) }))
+            .map(r => ({ route: r, score: scoreRoute(r, preparedTokens) }))
             .filter(({ score }) => score > 0)
             .sort((a, b) => b.score - a.score);
-        render(scored.map(({ route }) => route));
+        render(scored.map(({ route }) => route), highlightRegexes);
     }
 
     function setActive(idx) {
@@ -427,7 +440,10 @@
         if (e.target === overlay) close();
     });
 
-    input.addEventListener('input', () => filter(input.value));
+    input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => filter(input.value), 150);
+    });
 
     input.addEventListener('keydown', e => {
         const items = results.querySelectorAll('.api-route-item');
